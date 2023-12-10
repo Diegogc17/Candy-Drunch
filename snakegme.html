@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Drunch-Snake</title>
+    <style>
+        body {
+            background-color: #FFB6C1;
+            text-align: center;
+            font-family: 'Bradley Hand ITC', cursive;
+        }
+
+        canvas {
+            border: 1px solid #000;
+            display: block;
+            margin: 20px auto;
+            position: relative;
+        }
+
+        #gameInfo {
+            font-family: 'Arial', sans-serif;
+            font-size: 18px;
+            margin-bottom: 10px;
+        }
+
+        #instagramButton {
+            background-color: #800080;
+            color: #fff;
+            font-size: 20px;
+            padding: 10px 20px;
+            border: none;
+            cursor: pointer;
+            border-radius: 10px;
+            margin-top: 10px;
+            display: block;
+            margin: auto;
+        }
+    </style>
+</head>
+<body>
+
+<h1>Candy Drunch</h1>
+<div id="gameInfo">Tiempo: <span id="timer">0</span> segundos | Cajas de regalo: <span id="score">0</span></div>
+<canvas id="gameCanvas" width="400" height="400"></canvas>
+<button onclick="startGame()">Iniciar Juego</button>
+<button onclick="pauseGame()">Pausar Juego</button>
+<button onclick="resetGame()">Reiniciar Juego</button>
+<button id="instagramButton" onclick="goToInstagram()">Instagram</button>
+
+<script>
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+
+    const boxSize = 20;
+    const snakeColor = "#006400";
+    const giftBoxColor = "#FF69B4";
+    const ribbonColor = "#FFD700";
+    const bombColor = "#000";
+    const explosionColors = ["#FFD700", "#FFA500", "#FF4500"];
+    const backgroundColor = "#FFB6C1";
+
+    let snake = [{ x: 10, y: 10 }];
+    let direction = "right";
+    let gameRunning = false;
+    let gameInterval;
+    let giftBox = { x: 15, y: 15 };
+    let bombs = [];
+    let timer = 0;
+    let score = 0;
+    let startX, startY;
+
+    function draw() {
+        ctx.fillStyle = backgroundColor;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        ctx.fillStyle = snakeColor;
+        for (let i = 0; i < snake.length; i++) {
+            if (i === 0) {
+                drawSnakeHead(snake[i].x * boxSize, snake[i].y * boxSize, boxSize, boxSize / 2);
+            } else if (i === snake.length - 1) {
+                ctx.fillStyle = "#32CD32";
+                ctx.fillRect(snake[i].x * boxSize, snake[i].y * boxSize, boxSize, boxSize);
+                ctx.fillStyle = snakeColor;
+            } else {
+                ctx.fillStyle = snakeColor;
+                ctx.fillRect(snake[i].x * boxSize, snake[i].y * boxSize, boxSize, boxSize);
+            }
+        }
+
+        drawGiftBox(giftBox.x * boxSize, giftBox.y * boxSize);
+
+        for (let bomb of bombs) {
+            drawBomb(bomb.x * boxSize, bomb.y * boxSize);
+        }
+    }
+
+    function drawSnakeHead(x, y, width, height) {
+        ctx.fillStyle = snakeColor;
+        ctx.beginPath();
+        ctx.arc(x + width / 2, y + height / 2, width / 2, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = "#000";
+        ctx.beginPath();
+        ctx.arc(x + width / 3, y + height / 3, width / 10, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(x + 2 * width / 3, y + height / 3, width / 10, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    function drawGiftBox(x, y) {
+        ctx.fillStyle = giftBoxColor;
+        ctx.fillRect(x, y, boxSize, boxSize);
+
+        ctx.fillStyle = ribbonColor;
+        const ribbonWidth = boxSize / 4;
+        const ribbonHeight = boxSize / 8;
+        const ribbonOffset = boxSize / 2 - ribbonHeight / 2;
+        ctx.fillRect(x, y + ribbonOffset, boxSize, ribbonHeight);
+        ctx.fillRect(x + ribbonOffset, y, ribbonWidth, boxSize);
+    }
+
+    function drawBomb(x, y) {
+        ctx.fillStyle = bombColor;
+        ctx.beginPath();
+        const bombRadius = boxSize / 2;
+        ctx.arc(x + bombRadius, y + bombRadius, bombRadius, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = "#FFD700";
+        ctx.fillRect(x + bombRadius - boxSize / 8, y - boxSize / 4, boxSize / 4, boxSize / 2);
+    }
+
+    function drawExplosion(x, y) {
+        for (let i = 0; i < 3; i++) {
+            ctx.fillStyle = explosionColors[i];
+            ctx.beginPath();
+            const explosionSize = boxSize / 2 * (i + 1);
+            ctx.arc(x + boxSize / 2, y + boxSize / 2, explosionSize, 0, Math.PI * 2);
+            ctx.fill();
+        }
+    }
+
+    function collisionWithSnake(x, y) {
+        for (let i = 0; i < snake.length; i++) {
+            if (snake[i].x === x && snake[i].y === y) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    function collisionWithBomb(x, y) {
+        for (let bomb of bombs) {
+            if (bomb.x === x && bomb.y === y) {
+                snake.pop();
+                drawExplosion(x * boxSize, y * boxSize);
+                stopGame();
+                return true;
+            }
+        }
+        return false;
+    }
+
+    function updateGameInfo() {
+        document.getElementById("score").innerText = score;
+    }
+
+    function generateRandomPosition() {
+        const x = Math.floor(Math.random() * (canvas.width / boxSize));
+        const y = Math.floor(Math.random() * (canvas.height / boxSize));
+        return { x, y };
+    }
+
+    function generateGiftBox() {
+        let newGiftBox = generateRandomPosition();
+        while (bombs.some(bomb => bomb.x === newGiftBox.x && bomb.y === newGiftBox.y)) {
+            newGiftBox = generateRandomPosition();
+        }
+        giftBox = newGiftBox;
+    }
+
+    function generateBomb() {
+        let newBomb = generateRandomPosition();
+        while (newBomb.x === giftBox.x && newBomb.y === giftBox.y) {
+            newBomb = generateRandomPosition();
+        }
+        bombs.push(newBomb);
+    }
+
+    function showPromoCode() {
+        if (score >= 10) {
+            const promoCode = generateRandomCode(5);
+            alert(`¡Alcanzaste los 10 regalos! Usa este código promocional (${promoCode}) para tu siguiente compra.`);
+            resetGame();
+        }
+    }
+
+    function generateRandomCode(length) {
+        const characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+        let code = "";
+        for (let i = 0; i < length; i++) {
+            code += characters.charAt(Math.floor(Math.random() * characters.length));
+        }
+        return code;
+    }
+
+    function move() {
+        let newHead = { x: snake[0].x, y: snake[0].y };
+        switch (direction) {
+            case "up":
+                newHead.y--;
+                break;
+            case "down":
+                newHead.y++;
+                break;
+            case "left":
+                newHead.x--;
+                break;
+            case "right":
+                newHead.x++;
+                break;
+        }
+
+        if (
+            newHead.x < 0 || newHead.x >= canvas.width / boxSize ||
+            newHead.y < 0 || newHead.y >= canvas.height / boxSize ||
+            collisionWithSnake(newHead.x, newHead.y) ||
+            collisionWithBomb(newHead.x, newHead.y)
+        ) {
+            stopGame();
+            return;
+        }
+
+        if (newHead.x === giftBox.x && newHead.y === giftBox.y) {
+            snake.unshift({ x: giftBox.x, y: giftBox.y });
+            generateGiftBox();
+            score++;
+            updateGameInfo();
+            if (score % 5 === 0) {
+                generateBomb();
+            }
+            showPromoCode();
+        } else {
+            snake.pop();
+        }
+
+        snake.unshift(newHead);
+        draw();
+    }
+
+    document.addEventListener("keydown", function (event) {
+        handleKeyPress(event.key);
+    });
+
+    document.addEventListener("touchstart", handleTouchStart, false);
+    document.addEventListener("touchmove", handleTouchMove, false);
+
+    function handleTouchStart(event) {
+        if (event.touches.length === 1) {
+            startX = event.touches[0].pageX;
+            startY = event.touches[0].pageY;
+        }
+    }
+
+    function handleTouchMove(event) {
+        if (event.touches.length === 1) {
+            const deltaX = event.touches[0].pageX - startX;
+            const deltaY = event.touches[0].pageY - startY;
+
+            if (Math.abs(deltaX) > Math.abs(deltaY)) {
+                if (deltaX > 0) {
+                    handleKeyPress("ArrowRight");
+                } else {
+                    handleKeyPress("ArrowLeft");
+                }
+            } else {
+                if (deltaY > 0) {
+                    handleKeyPress("ArrowDown");
+                } else {
+                    handleKeyPress("ArrowUp");
+                }
+            }
+        }
+    }
+
+    function handleKeyPress(key) {
+        switch (key) {
+            case "ArrowUp":
+                if (direction !== "down") {
+                    direction = "up";
+                }
+                break;
+            case "ArrowDown":
+                if (direction !== "up") {
+                    direction = "down";
+                }
+                break;
+            case "ArrowLeft":
+                if (direction !== "right") {
+                    direction = "left";
+                }
+                break;
+            case "ArrowRight":
+                if (direction !== "left") {
+                    direction = "right";
+                }
+                break;
+        }
+    }
+
+    function startGame() {
+        if (!gameRunning) {
+            gameRunning = true;
+            snake = [{ x: 10, y: 10 }];
+            direction = "right";
+            generateGiftBox();
+            bombs = [];
+            timer = 0;
+            score = 0;
+            gameInterval = setInterval(() => {
+                timer++;
+                document.getElementById("timer").innerText = timer;
+                move();
+            }, 300);
+            updateGameInfo();
+            draw();
+        }
+    }
+
+    function stopGame() {
+        gameRunning = false;
+        clearInterval(gameInterval);
+        alert("¡Game Over! Puntuación: " + score);
+    }
+
+    function pauseGame() {
+        gameRunning = false;
+        clearInterval(gameInterval);
+        alert("Juego pausado");
+    }
+
+    function resetGame() {
+        gameRunning = false;
+        clearInterval(gameInterval);
+        document.getElementById("timer").innerText = "0";
+        document.getElementById("score").innerText = "0";
+        draw();
+    }
+
+    function goToInstagram() {
+        window.location.href = "https://www.instagram.com/candy.drunch/";
+    }
+</script>
+
+</body>
+</html>
